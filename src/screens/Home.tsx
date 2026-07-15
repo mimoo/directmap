@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MODE_INFO } from '../engine/questions'
+import { Strengths } from '../components/Strengths'
 import { useProgress } from '../state/progress'
 
 interface HomeProps {
@@ -46,20 +46,12 @@ export function Home({ onPlay }: HomeProps) {
         <h2>How it works</h2>
         <p>
           You’re the town courier. Every parcel is a little navigation puzzle — three wrong
-          deliveries and the run is over. New kinds of puzzles (and nastier maps) appear the
-          further you get:
+          deliveries and the run is over. The puzzles come at random and adapt to you: get a
+          streak going and they get harder faster; slip up and the next few ease off.
         </p>
-        <ul className="legend">
-          {Object.values(MODE_INFO).map((m) => (
-            <li key={m.title}>
-              <strong>{m.title}</strong>
-            </li>
-          ))}
-          <li>
-            <strong>The Real World</strong> <span className="legend-opt">(optional, see below)</span>
-          </li>
-        </ul>
       </section>
+
+      <Strengths />
 
       <RealWorldSettings />
 

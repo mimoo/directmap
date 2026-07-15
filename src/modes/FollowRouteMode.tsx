@@ -38,10 +38,21 @@ export function FollowRouteMode({ question: q, qIndex, onDone }: { question: Q; 
     setMoved(true)
   }
 
+  const reset = () => {
+    if (answered) return
+    setPose(q.pose)
+    setMoved(false)
+  }
+
   const arrive = () => {
     if (answered) return
     setAnswered({ correct: sameCell(pose, q.expected) })
   }
+
+  // Once you've walked to the edge you can't step further; in the fog you
+  // also can't see it. Nudge you to turn or start over instead of pressing
+  // a dead "walk" button.
+  const blocked = moved && !answered && !canStep(q.town, pose)
 
   const hideNow = q.hideCharacter && moved && !answered
 
@@ -73,14 +84,20 @@ export function FollowRouteMode({ question: q, qIndex, onDone }: { question: Q; 
       />
       {!answered && (
         <div className="route-controls">
+          {blocked && <p className="route-blocked">That’s the edge of town — turn, or start over.</p>}
           <DPad
             onTurnLeft={() => setPose((p) => ({ ...p, heading: turnLeft(p.heading) }))}
             onForward={forward}
             onTurnRight={() => setPose((p) => ({ ...p, heading: turnRight(p.heading) }))}
           />
-          <button className="btn btn-arrive" onClick={arrive} disabled={!moved}>
-            I’m here!
-          </button>
+          <div className="route-actions">
+            <button className="btn btn-reset" onClick={reset} disabled={!moved}>
+              ↺ Start over
+            </button>
+            <button className="btn btn-arrive" onClick={arrive} disabled={!moved}>
+              I’m here!
+            </button>
+          </div>
         </div>
       )}
       {answered && (

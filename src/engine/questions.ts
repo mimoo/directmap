@@ -43,38 +43,18 @@ export interface PuzzleConfig {
 
 export const HEARTS = 3
 
-export interface ModeInfo {
-  title: string
-  /** One-paragraph "how to think about it", shown when the mode first appears. */
-  lesson: string
-}
-
-export const MODE_INFO: Record<Mode, ModeInfo> = {
-  'tap-cell': {
-    title: 'Body Compass',
-    lesson:
-      'The arrow on the map is you. “Left” means the arrow’s left — not the left of your screen. Trick: imagine turning the map in your head until the arrow points up. Then left is left again.',
-  },
-  'compass-walk': {
-    title: 'Compass Steps',
-    lesson:
-      'North is up on the map — but you might be facing east. To walk north, first work out where north is compared to your nose, turn until you face it, then step. Watch the little compass: it never lies.',
-  },
-  'follow-route': {
-    title: 'The Delivery Note',
-    lesson:
-      'After every turn, your left and right change! Keep asking: “which way am I facing NOW?” Say it out loud if it helps. The directions are from your point of view at each moment, not from the map’s.',
-  },
-  'where-am-i': {
-    title: 'Lost & Found',
-    lesson:
-      'Look at the street view like a detective: what’s on your LEFT, what’s on your RIGHT, what’s far AHEAD? Then find the one arrow on the map that would see exactly that. Two spots can face the same building — but its side changes.',
-  },
-  'which-view': {
-    title: 'Postcards',
-    lesson:
-      'Same street corner, four directions, four completely different views. Before peeking at the postcards, read the map: “facing that way, the café should be on my right.” Then find the postcard that agrees.',
-  },
+/**
+ * Plain-language name for the *skill* each puzzle trains — used only for the
+ * strengths readout, never shown as an in-play "challenge" banner. The game
+ * itself just asks questions; this is how we tell the player, afterwards,
+ * what they're good at and what to practice.
+ */
+export const SKILL_LABEL: Record<Mode, string> = {
+  'tap-cell': 'Your left & right',
+  'compass-walk': 'Compass directions',
+  'follow-route': 'Following a route',
+  'where-am-i': 'Placing yourself',
+  'which-view': 'Picturing the view',
 }
 
 /**
@@ -135,6 +115,32 @@ export function sceneSignature(town: Town, pose: Pose): string {
 export function visibleCell(town: Town, pose: Pose, f: number, s: number) {
   const c = egoToWorld(pose, f, s)
   return cellAt(town, c)
+}
+
+/**
+ * The *salient* part of a view: only the features a player can actually read
+ * at a glance — the two nearest facades (f=1), the next pair (f=3), and how
+ * far the road runs. Two poses with the same salient signature look basically
+ * identical, even if a tiny far-off (f=5) building differs. Picture puzzles
+ * require options to differ *here*, so a marked-wrong answer never looks the
+ * same as the marked-right one.
+ */
+export function salientSignature(town: Town, pose: Pose): string {
+  let maxF = 0
+  while (maxF < VIEW_DEPTH && visibleCell(town, pose, maxF + 1, 0)) maxF++
+  const parts: string[] = []
+  for (const f of [1, 3]) {
+    for (const s of [-1, 1]) {
+      const c = visibleCell(town, pose, f, s)
+      if (!c) parts.push('~')
+      else if (c.kind === 'landmark') parts.push('L' + c.id)
+      else if (c.kind === 'house') parts.push('H' + c.variant)
+      else if (c.kind === 'park') parts.push('P' + c.variant)
+      else parts.push('.')
+    }
+  }
+  parts.push('r' + maxF)
+  return parts.join('|')
 }
 
 /** World coordinates of ego point (forward f, side s) from pose. */
@@ -232,18 +238,22 @@ function genWhereAmI(rng: Rng, tier: PuzzleConfig): Question {
   for (let attempt = 0; attempt < 100; attempt++) {
     const town = generateTown(rng, tier.townSize)
     const answer = randomPose(rng, town, tier.headings)
-    const sig = sceneSignature(town, answer)
+    const sig = salientSignature(town, answer)
     const distractors: Pose[] = []
+    // One option per intersection: two arrows on the same cell draw on top of
+    // each other into an unreadable star, and you can't tell which badge is
+    // which. Keep every candidate arrow on its own corner.
+    const usedCells = new Set<string>([`${answer.x},${answer.y}`])
     let guard = 0
     while (distractors.length < optionCount - 1 && guard++ < 200) {
-      const wantSameCell = distractors.length === 0 && rng() < 0.6
-      const d: Pose = wantSameCell
-        ? { ...answer, heading: pick(rng, ([0, 1, 2, 3] as Heading[]).filter((h) => h !== answer.heading)) }
-        : randomPose(rng, town)
-      if (d.x === answer.x && d.y === answer.y && d.heading === answer.heading) continue
-      if (distractors.some((o) => o.x === d.x && o.y === d.y && o.heading === d.heading)) continue
-      if (sceneSignature(town, d) === sig) continue
+      const d = randomPose(rng, town)
+      const cellKey = `${d.x},${d.y}`
+      if (usedCells.has(cellKey)) continue
+      // Reject look-alikes: a distractor must differ from the answer in a
+      // feature the player can actually see up close, not just far away.
+      if (salientSignature(town, d) === sig) continue
       distractors.push(d)
+      usedCells.add(cellKey)
     }
     if (distractors.length < optionCount - 1) continue
     const options = shuffle(rng, [answer, ...distractors])
@@ -269,7 +279,9 @@ function genWhichView(rng: Rng, tier: PuzzleConfig): Question {
         ? shuffle(rng, [pose.heading, turn2(pose.heading, pick(rng, [1, 2, 3]))])
         : shuffle(rng, [0, 1, 2, 3] as Heading[])
     const optionPoses = headings.map((h) => ({ ...pose, heading: h }))
-    const sigs = optionPoses.map((p) => sceneSignature(town, p))
+    // Distinct up close, not just deep in the scene: no two postcards may
+    // look the same at a glance.
+    const sigs = optionPoses.map((p) => salientSignature(town, p))
     if (new Set(sigs).size !== sigs.length) continue
     return {
       mode: 'which-view',
@@ -312,29 +324,15 @@ function generateFromEntry(rng: Rng, entry: ScheduleEntry): Question {
 
 /**
  * One puzzle of the infinite run. Deterministic in (level, seed).
- * Freshly unlocked challenges are favored so the game keeps surprising;
- * `avoidMode` (the previous puzzle's mode) reduces immediate repeats.
+ * The kind of question is just picked at random from whatever the current
+ * difficulty level has unlocked; `avoidMode` (the previous puzzle's mode)
+ * keeps the same kind from coming up twice in a row.
  */
 export function generatePuzzle(level: number, seed: number, avoidMode?: Mode): Question {
   const rng = makeRng(seed)
   const open = availableEntries(level)
-  const weights = open.map((e) => (level - e.minLevel <= 6 ? 3 : 1))
-  let entry = pickWeighted(rng, open, weights)
-  if (entry.mode === avoidMode && open.some((e) => e.mode !== avoidMode)) {
-    const others = open.filter((e) => e.mode !== avoidMode)
-    entry = pickWeighted(rng, others, others.map((e) => (level - e.minLevel <= 6 ? 3 : 1)))
-  }
-  return generateFromEntry(rng, entry)
-}
-
-function pickWeighted<T>(rng: Rng, items: T[], weights: number[]): T {
-  const total = weights.reduce((a, b) => a + b, 0)
-  let roll = rng() * total
-  for (let i = 0; i < items.length; i++) {
-    roll -= weights[i]
-    if (roll <= 0) return items[i]
-  }
-  return items[items.length - 1]
+  const pool = open.some((e) => e.mode !== avoidMode) ? open.filter((e) => e.mode !== avoidMode) : open
+  return generateFromEntry(rng, pick(rng, pool))
 }
 
 export function instructionText(ins: Instruction): string {

@@ -16,10 +16,14 @@ Each challenge type targets one specific way people get lost:
 | Postcards | predict which view a map pose sees | map pose → expected view |
 | The Real World | real Street View photo vs. real map | relating a photo to a north-up map (optional) |
 
-The difficulty schedule (`SCHEDULE` in `src/engine/questions.ts`) unlocks
-challenges by parcel number and retires ones that got too easy. From parcel
-~20 the map starts arriving rotated ("up" is no longer north — the alignment
-effect); from ~37 the courier turns invisible while walking.
+Difficulty is a *level* that adapts to you (`Run.tsx`), not the raw parcel
+count: nail a few in a row and it climbs faster and faster (+1 up to +4 a
+delivery); miss and it drops back two, easing the next few parcels. The
+schedule (`SCHEDULE` in `src/engine/questions.ts`) unlocks challenges by level
+and retires ones that got too easy. Around level ~20 the map starts arriving
+rotated ("up" is no longer north — the alignment effect); by ~37 the courier
+turns invisible while walking — so a sharp player reaches the nasty maps in a
+handful of parcels, while a struggling one gets more room to learn.
 
 ## How it works
 
@@ -27,8 +31,10 @@ Everything renders from one data model (`src/engine/town.ts`): an odd-sized
 grid where odd/odd cells are intersections, even/even cells are blocks holding
 landmarks/houses/parks. The top-down map (`MapView`) and the first-person
 street view (`StreetView`) are both derived from it, so views and map can
-never disagree — and puzzle generators verify via scene signatures that every
-multiple-choice puzzle has exactly one defensible answer.
+never disagree — and puzzle generators verify via *salient* scene signatures
+(the near facades and road you actually read at a glance, not a tiny building
+five blocks off) that every multiple-choice puzzle has exactly one answer that
+looks right.
 
 Wrong answers teach: the map animates to the character's frame (watch your
 "left" become screen-left), routes replay as dotted trails, and wrong
